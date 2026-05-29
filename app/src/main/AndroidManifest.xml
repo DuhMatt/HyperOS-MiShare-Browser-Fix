@@ -30,6 +30,7 @@
         - com.xiaomi.market — Xiaomi App Store
         - com.xiaomi.mirror — Mi Mirror / device interconnect
         - com.android.browser — Xiaomi Browser itself (if installed)
+        - com.android.settings — Wi-Fi details / Xiaomi router management
         -->
         <meta-data
             android:name="xposedscope"

@@ -19,6 +19,8 @@
         <item>com.miui.securitycenter</item>
         <!-- System UI -->
         <item>com.android.systemui</item>
+        <!-- Settings / Wi-Fi details page, including "Manage Xiaomi router" -->
+        <item>com.android.settings</item>
         <!-- HyperAI Engine — clipboard URL recognition + screen recognition -->
         <item>com.xiaomi.aicr</item>
         <!-- Super XiaoAi / voice assistant — screen recognition URLs -->

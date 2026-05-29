@@ -119,9 +119,10 @@ object IntentInterceptor {
                     )
                 }
 
-                // Apply original flags (but remove FLAG_ACTIVITY_NEW_TASK if
-                // we are not in an Activity context, to avoid issues)
                 replacement.flags = cleaned.flags
+                if (context !is Activity) {
+                    replacement.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
                 replacement.putExtras(cleaned)
 
                 Log.i(TAG, "Redirecting to: ${replacement.component ?: replacement.`package`
@@ -193,6 +194,9 @@ object IntentInterceptor {
                 }
 
                 replacement.flags = cleaned.flags
+                if (context !is Activity) {
+                    replacement.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
                 replacement.putExtras(cleaned)
 
                 Log.i(TAG, "Redirecting (Instrumentation) to: ${replacement.component ?: replacement.`package`
@@ -248,8 +252,9 @@ object IntentInterceptor {
         val action = intent.action
         if (action != Intent.ACTION_VIEW && action != Intent.ACTION_MAIN) return false
 
-        // Must have a data URI
-        val data: Uri = intent.data ?: return false
+        // Must have a web-like URI, either as Intent.data or tucked into
+        // extras/ClipData by Xiaomi system components.
+        val data: Uri = intent.data ?: extractWebUriFromIntent(intent) ?: return false
 
         val scheme: String = data.scheme ?: return false
 
@@ -293,6 +298,16 @@ object IntentInterceptor {
             return true
         }
 
+        // Case D2: Wi-Fi settings' "Manage Xiaomi router" may route the
+        // router admin page through Xiaomi Browser. Keep it on the user's
+        // system default browser, especially when Xiaomi Browser is disabled.
+        if ((scheme == "http" || scheme == "https") &&
+            callerPackage == XiaomiPackageList.SETTINGS &&
+            isRouterAdminUrl(data)) {
+            Log.d(TAG, "Will intercept (Settings router admin): caller=$callerPackage, data=$data")
+            return true
+        }
+
         // Case E: mi:// scheme — Xiaomi's custom URL wrapper
         // (used by Xiaomi AI Engine and voice assistant)
         if (scheme == "mi" || scheme.startsWith("mi")) {
@@ -333,6 +348,13 @@ object IntentInterceptor {
      */
     private fun cleanIntent(intent: Intent): Intent {
         val cleaned = Intent(intent)  // copy
+
+        if (cleaned.data == null) {
+            extractWebUriFromIntent(cleaned)?.let {
+                Log.i(TAG, "Recovered URL from intent payload: $it")
+                cleaned.data = it
+            }
+        }
 
         // Remove forced package targeting
         if (XiaomiPackageList.isXiaomiBrowser(cleaned.`package`) ||
@@ -517,6 +539,47 @@ object IntentInterceptor {
             trimmed.startsWith("www.") -> "https://$trimmed"
             else -> "https://$trimmed"
         }
+    }
+
+    private fun isRouterAdminUrl(uri: Uri): Boolean {
+        val host = uri.host?.lowercase() ?: return false
+        if (host == "miwifi.com" || host.endsWith(".miwifi.com")) return true
+        if (host == "router.miwifi.com" || host == "www.miwifi.com") return true
+
+        val path = uri.path?.lowercase().orEmpty()
+        if ((path.contains("miwifi") || path.contains("luci")) && isPrivateHost(host)) {
+            return true
+        }
+
+        // Xiaomi router admin pages usually use the current gateway address.
+        return isPrivateGatewayHost(host)
+    }
+
+    private fun isPrivateGatewayHost(host: String): Boolean {
+        val parts = host.split('.')
+        if (parts.size != 4) return false
+
+        val nums = parts.map { it.toIntOrNull() ?: return false }
+        if (nums.any { it !in 0..255 }) return false
+
+        return when {
+            nums[0] == 10 && nums[3] == 1 -> true
+            nums[0] == 192 && nums[1] == 168 && nums[3] == 1 -> true
+            nums[0] == 172 && nums[1] in 16..31 && nums[3] == 1 -> true
+            else -> false
+        }
+    }
+
+    private fun isPrivateHost(host: String): Boolean {
+        val parts = host.split('.')
+        if (parts.size != 4) return false
+
+        val nums = parts.map { it.toIntOrNull() ?: return false }
+        if (nums.any { it !in 0..255 }) return false
+
+        return nums[0] == 10 ||
+            (nums[0] == 192 && nums[1] == 168) ||
+            (nums[0] == 172 && nums[1] in 16..31)
     }
 
     private fun getRecentMiShareUrl(): Uri? {
