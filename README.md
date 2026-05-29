@@ -4,26 +4,26 @@
 
 这是一个 LSPosed 模块，用来修复 HyperOS / MIUI 里 MiShare（小米互传）接收网页链接时，被强制绕到小米浏览器或小米应用商店的问题。
 
-在一些设备上，如果小米浏览器不可用、没有安装，或者用户根本不想用小米浏览器，MiShare 接收到网页链接后，可能会把原始链接改成小米应用商店的跳转地址，例如：
+我遇到的情况是：MiShare 收到一个网页链接后，没有把原始 URL 直接交给默认浏览器，而是先变成类似这样的商店跳转：
 
 ```text
 market://details?id=com.android.browser
 ```
 
-之后小米应用商店再拉起用户设置的第三方浏览器，但传过去的地址可能只剩下：
+之后小米应用商店会拉起我设置的第三方浏览器，但传过去的地址只剩：
 
 ```text
 https://
 ```
 
-这个模块会尝试从 MiShare 的内部数据里找回原始分享链接，并用用户设置的默认浏览器打开真正的 URL。
+也就是说，浏览器确实打开了，链接没了。这个模块做的事就是在这条链路中把原始链接找回来，然后交给用户自己的默认浏览器。
 
 ### 功能
 
 - Hook MiShare (`com.miui.mishare.connectivity`) 的链接打开流程。
-- 识别指向小米浏览器 / 小米应用商店的重定向 Intent。
-- 从 MiShare 的 `TapRecvData` / `TapData` 对象字段中恢复原始分享链接。
-- 使用系统默认浏览器打开恢复后的链接。
+- 拦截指向小米浏览器 / 小米应用商店的网页跳转。
+- 从 MiShare 的 `TapRecvData` / `TapData` 对象字段里恢复原始 URL。
+- 用系统默认浏览器打开恢复后的链接。
 - 尽量不影响非网页 Intent，比如文件、电话、短信、地图和应用私有 scheme。
 
 ### 已测试环境
@@ -67,16 +67,18 @@ https://
 - 小米应用商店 (`com.xiaomi.market`)
 - 小米浏览器 (`com.android.browser`)，如果设备上存在
 
+### 安装
+
+普通用户建议直接到 [Releases](https://github.com/MMMMatt/HyperOS-MiShare-Browser-Fix/releases) 下载已签名的 APK。
+
+安装后，在 LSPosed 中启用模块，选择推荐作用域，然后重启手机。只重启相关作用域应用有时也够，但重启最省心。
+
 ### 构建
+
+Debug 构建：
 
 ```bash
 ./gradlew assembleDebug
-```
-
-Debug APK 输出路径：
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Release 构建：
@@ -85,15 +87,7 @@ Release 构建：
 ./gradlew assembleRelease
 ```
 
-默认生成的 release APK 没有签名。正式分发前请自行签名。
-
-### 安装
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-安装后，在 LSPosed 中启用模块，选择推荐作用域，然后重启手机。也可以至少重启相关作用域应用。
+默认生成的 release APK 没有签名。如果要自己分发，需要自行签名。
 
 ### 调试
 
@@ -105,7 +99,7 @@ HyperOSBrowserFix_Intent
 HyperOSBrowserFix_Resolver
 ```
 
-关键日志：
+比较有用的日志：
 
 ```text
 Cached Mi Share URL
@@ -116,33 +110,33 @@ Redirecting to
 
 ### 注意事项
 
-HyperOS / MIUI 的内部实现经常变化。这个模块已经尽量使用防御式 hook 和反射扫描，但不同系统版本仍然可能需要适配新的类名、字段名或跳转链路。
+HyperOS / MIUI 的内部实现经常变化。这个模块现在能处理我手上的设备和系统版本，但其他版本可能会换类名、字段名，或者换一条跳转链路。如果失效，通常需要重新看 LSPosed / logcat 日志定位。
 
 ## English
 
-This is an LSPosed module for fixing an issue where HyperOS / MIUI Mi Share forces shared web links through Xiaomi Browser or Xiaomi Market.
+This is an LSPosed module for a small but annoying HyperOS / MIUI behavior: Mi Share may route received web links through Xiaomi Browser or Xiaomi Market instead of handing the original URL to the user's default browser.
 
-On some devices, if Xiaomi Browser is unavailable, uninstalled, or simply not the browser the user wants to use, Mi Share may turn a received web URL into a Xiaomi Market fallback such as:
+The problem I ran into looked like this. Mi Share received a normal web link, but before opening it, the link was converted into a Xiaomi Market fallback:
 
 ```text
 market://details?id=com.android.browser
 ```
 
-Xiaomi Market may then open the user's third-party browser, but the browser only receives:
+Xiaomi Market then launched my third-party browser, but the URL passed to the browser was only:
 
 ```text
 https://
 ```
 
-This module tries to recover the original shared URL from Mi Share's internal data and open the real URL with the user's default browser.
+So the browser opened, but the actual link was gone. This module recovers the original URL from Mi Share's internal data and sends that URL to the default browser.
 
 ### Features
 
 - Hooks Mi Share (`com.miui.mishare.connectivity`) link-opening flows.
-- Detects Xiaomi Browser / Xiaomi Market redirection intents.
-- Recovers the original shared URL from Mi Share's `TapRecvData` / `TapData` object fields.
+- Intercepts web redirects aimed at Xiaomi Browser or Xiaomi Market.
+- Recovers the original URL from Mi Share's `TapRecvData` / `TapData` object fields.
 - Opens the recovered URL with the system default browser.
-- Avoids touching non-web intents where possible, including files, phone links, SMS, maps, and app-specific schemes.
+- Tries to leave non-web intents alone, including files, phone links, SMS, maps, and app-specific schemes.
 
 ### Tested Environment
 
@@ -162,7 +156,7 @@ The following values were read from a real device over ADB:
 | LSPosed | Tested |
 | Browser tested | Via (`mark.via`) |
 
-Observed working recovery path:
+Observed recovery path:
 
 ```text
 Mi Share notification click
@@ -185,16 +179,18 @@ Recommended LSPosed scope:
 - Xiaomi Market (`com.xiaomi.market`)
 - Xiaomi Browser (`com.android.browser`), if present on the device
 
+### Install
+
+For normal use, download the signed APK from [Releases](https://github.com/MMMMatt/HyperOS-MiShare-Browser-Fix/releases).
+
+After installing it, enable the module in LSPosed, select the recommended scope, then reboot the phone. Restarting the scoped apps may also be enough in some cases, but a reboot is the least fussy option.
+
 ### Build
+
+Debug build:
 
 ```bash
 ./gradlew assembleDebug
-```
-
-The debug APK will be generated at:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Release build:
@@ -203,15 +199,7 @@ Release build:
 ./gradlew assembleRelease
 ```
 
-The default release APK is unsigned. Sign it before publishing or sharing a production build.
-
-### Install
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Then enable the module in LSPosed, select the recommended scope, and reboot the phone. Restarting the scoped apps may also be enough in some cases.
+The default release APK is unsigned. If you want to distribute your own build, sign it with your own keystore.
 
 ### Debugging
 
@@ -223,7 +211,7 @@ HyperOSBrowserFix_Intent
 HyperOSBrowserFix_Resolver
 ```
 
-Helpful log patterns:
+Useful log lines:
 
 ```text
 Cached Mi Share URL
@@ -234,9 +222,8 @@ Redirecting to
 
 ### Notes
 
-HyperOS and MIUI internals change often. This module uses defensive hooks and reflection, but some versions may still need extra handling for new class names, field names, or redirection flows.
+HyperOS and MIUI internals change often. This module works on the device and build listed above, but other versions may use different class names, field names, or redirect flows. If it breaks, the next step is to inspect LSPosed / logcat output and adjust the hook.
 
 ## License
 
 MIT
-```
